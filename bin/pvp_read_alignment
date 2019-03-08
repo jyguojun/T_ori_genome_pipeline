@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+
+import argparse
+from pvp import read_alignment, pvp_utils
+import os
+
+parser=argparse.ArgumentParser(description="This is a parasite variant pipeline")
+parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist", action="store", dest="output_dir")
+parser.add_argument("-q", "--fastq-read", help="individual fastq file paths", action="store", dest="reads")
+
+args=parser.parse_args()
+
+reads = os.path.abspath(args.reads)
+out = os.path.abspath(args.output_dir)
+temp_directory = os.path.join(out,"temp_directory")
+sample_name, gzipped = pvp_utils.get_sample_name(reads)
+
+if not os.path.isfile(os.path.join(temp_directory, "%s.bwa.bam" %sample_name)):
+	read_alignment.bwa(sample_name, temp_directory, out)
+if not os.path.isfile(os.path.join(temp_directory, "%s.ngm.bam" %sample_name)):
+	read_alignment.ngm(sample_name, temp_directory, out)

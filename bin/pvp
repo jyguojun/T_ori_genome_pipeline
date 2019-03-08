@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+import argparse
+from pvp import pvp_utils
+import os, logging
+
+parser=argparse.ArgumentParser(description="This is a parasite variant pipeline")
+parser.add_argument("-q", "--fastq-list", help="A comma separated list containing fastq file paths", action="store", dest="fastq_list")
+parser.add_argument("-r", "--reference", help="Path to a reference fasta file", action="store", dest="reference")
+parser.add_argument("-c", "--host-reference", help="Path to cattle host reference fasta file", action="store", dest="host_reference")
+parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist", action="store", dest="output_dir")
+parser.add_argument("-f", "--force-overwrite", help="Overwrite files in the output directories.", action="store_true", dest="force_overwrite")
+parser.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing. Defaults to 1.", action="store", dest="threads", type=int, default=1)
+parser.add_argument("-u", "--uniqueness-file", help="path to pre-calculated uniqueness score text file", action="store", dest="uniqueness_file")
+
+args=parser.parse_args()
+
+reads_list = pvp_utils.import_reads(os.path.abspath(args.fastq_list))
+ref = os.path.abspath(args.reference)
+out = os.path.abspath(args.output_dir)
+force = args.force_overwrite
+threads = args.threads
+host_ref = os.path.abspath(args.host_reference)
+if args.uniqueness_file:
+	uniqueness = args.uniqueness_file
+
+pvp_utils.make_output_directory(out, force)
+temp_directory = os.path.join(out,"temp_directory")
+pvp_utils.replace_dir(temp_directory)
+
+main_log = os.path.join(out, "pvp.log")
+
+pvp_utils.create_log_entry(main_log, "Staring pvp pipeline")
+pvp_utils.create_log_entry(main_log, "Indexing references")
+cmd = "pvp_index_reference -r {} -c {} -o {} -t {}".format(ref, host_ref, out, threads)
+pvp_utils.run_command(cmd.split(), main_log)
+
+pvp_utils.create_log_entry(main_log, "Removing host reads")
+cmd = "parallel -j{} pvp_remove_host_reads -q {{}} -o {} :::".format(threads, out).split() + reads_list
+pvp_utils.run_command(cmd, main_log)
+
+pvp_utils.create_log_entry(main_log, "Aligning reads")
+cmd = "parallel -j{} pvp_read_alignment -q {{}} -o {} :::".format(threads, out).split() + reads_list
+pvp_utils.run_command(cmd, main_log)
+
+pvp_utils.create_log_entry(main_log, "Processing alinged reads")
+cmd = "parallel -j{} pvp_alignment_processing -q {{}} -o {} :::".format(threads, out).split() + reads_list
+pvp_utils.run_command(cmd, main_log)
+
+pvp_utils.create_log_entry(main_log, "Calling variants")
+cmd = "parallel -j{} pvp_variant_calling -q {{}} -o {} :::".format(threads, out).split() + reads_list
+pvp_utils.run_command(cmd, main_log)
+
+pvp_utils.create_log_entry(main_log, "Creating snp dictionary")
+cmd = "pvp_create_snp_dict -q {} -o {}".format(reads_list, out)
+pvp_utils.run_command(cmd.split(), main_log)
+
+pvp_utils.create_log_entry(main_log, "Running missingness filter")
+cmd = "pvp_missingness_filter -q {} -o {} -t {}".format(reads_list, out, threads) 
+pvp_utils.run_command(cmd.split(), main_log)
+
+pvp_utils.create_log_entry(main_log, "Running rare allele filter")
+cmd = "pvp_rare_allele_filter -o {}".format(out)
+pvp_utils.run_command(cmd.split(), main_log)
+
+pvp_utils.create_log_entry(main_log, "Running uniqueness score filter")
+cmd = "pvp_uniqueness_filter -r {} -o {} -t {}".format(ref, out, threads)
+pvp_utils.run_command(cmd.split(), main_log)

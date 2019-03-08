@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+
+import argparse
+from pvp import variant_filtering, pvp_utils
+import os
+
+parser=argparse.ArgumentParser(description="This is a parasite variant pipeline")
+parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist", action="store", dest="output_dir")
+
+args=parser.parse_args()
+
+out = os.path.abspath(args.output_dir)
+aligners = ["bwa", "ngm"]
+
+
+for aligner in aligners:
+	filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "rare_allele_filter")
+		if not os.path.isfile(os.path.join(out, filename)):
+			# snp_info_d = open_csv("snp_info_d", aligner, "missingness_filter")
+			snp_info_d = pvp_utils.read_from_pickle_file("snp_info_d", aligner, "missingness_filter")
+			print "Running rare allele filter"
+			snp_info_d = variant_filtering.rare_allele_filter(snp_info_d)
+			print "Rare allele filter complete: %s SNPs failed filter, %s SNPs remian " % ((len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
+			pvp_utils.save_to_csv(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
+			pvp_utils.output_to_pickle_file(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
+			os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))

@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+
+import argparse
+from pvp import host_removal, pvp_utils
+import os
+
+parser=argparse.ArgumentParser(description="This is a parasite variant pipeline")
+parser.add_argument("-q", "--fastq-read", help="individual fastq file paths", action="store", dest="reads")
+parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist", action="store", dest="output_dir")
+
+args=parser.parse_args()
+
+reads = os.path.abspath(args.reads)
+out = os.path.abspath(args.output_dir)
+temp_directory = os.path.join(out,"temp_directory")
+sample_name, gzipped = pvp_utils.get_sample_name(reads)
+
+if not os.path.isfile(os.path.join(temp_directory, "%s.host_read_removed_merged.fastq" %sample_name)):
+	host_removal.trim_reads(reads, sample_name, temp_directory, out, gzipped)
+	host_removal.bowtie2_mapping(reads, sample_name, temp_directory, out)
