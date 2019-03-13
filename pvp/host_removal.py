@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os
+import os, shutil
 from pvp_utils import *
 from Bio import SeqIO
 
@@ -94,13 +94,22 @@ def index_reference(out, ref, host_ref, temp_directory, threads): #indexing to c
 	# host_ref_gb = SeqIO.parse(host_ref, "gb") # removed as host genome is already in fasta format
 	# SeqIO.write(host_ref_gb, os.path.join(temp_directory, "host_ref.fa"), "fasta")
 	log = os.path.join(out,"genome_log.txt")
-	with cd(temp_directory): 
-		run_command(["bwa", "index", "ref.fa" ], log)
-		print "Created bwa index"
-		run_command(["samtools", "faidx", "ref.fa"], log)
-		print "Created samtools index"
-		run_command(["picard", "-Xmx2g", "-XX:+UseSerialGC", "CreateSequenceDictionary", "REFERENCE=ref.fa", "OUTPUT=ref.dict" ], log)
-		print "Created picard index"
-		run_command(["bowtie2-build", host_ref, "host_ref_db", "--threads", str(threads)], log)
-		print "Created bowtie2 cattle host genome index"
+	ref_dir = os.path.join(out, "references")
+	if not os.path.isdir(ref_dir):
+		os.mkdir(ref_dir)
+	if not os.path.exists(os.path.join(ref_dir, 'host_ref_db.1.bt2')):
+		with cd(temp_directory): 
+			run_command(["bwa", "index", "ref.fa" ], log)
+			print "Created bwa index"
+			run_command(["samtools", "faidx", "ref.fa"], log)
+			print "Created samtools index"
+			run_command(["picard", "-Xmx2g", "-XX:+UseSerialGC", "CreateSequenceDictionary", "REFERENCE=ref.fa", "OUTPUT=ref.dict" ], log)
+			print "Created picard index"
+			run_command(["bowtie2-build", host_ref, "host_ref_db", "--threads", str(threads)], log)
+			print "Created bowtie2 cattle host genome index"
+			for file in os.listdir(temp_directory):
+				shutil.copyfile(os.path.join(ref_dir, file), os.path.join(temp_directory, file))
+	else:
+		for file in os.listdir(ref_dir):
+			shutil.copyfile(os.path.join(ref_dir, file), os.path.join(temp_directory, file))
 

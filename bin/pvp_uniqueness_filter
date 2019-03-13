@@ -8,6 +8,7 @@ parser=argparse.ArgumentParser(description="This is a parasite variant pipeline"
 parser.add_argument("-r", "--reference", help="Path to a reference fasta file", action="store", dest="reference")
 parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist", action="store", dest="output_dir")
 parser.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing. Defaults to 1.", action="store", dest="threads", type=int, default=1)
+parser.add_argument("-u", "--uniqueness-file", help="path to pre-calculated uniqueness score text file", action="store", dest="uniqueness_file", default="")
 
 
 args=parser.parse_args()
@@ -16,6 +17,7 @@ out = os.path.abspath(args.output_dir)
 aligners = ["bwa", "ngm"]
 threads = args.threads
 ref = os.path.abspath(args.reference)
+temp_directory = os.path.join(out,"temp_directory")
 
 
 
@@ -23,10 +25,10 @@ for aligner in aligners:
 	filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "uniqueness_filter")
 	if not os.path.isfile(os.path.join(out, filename)):
 		# snp_info_d = open_csv("snp_info_d", aligner, "rare_allele_filter")
-		snp_info_d = pvp_utils.read_from_pickle_file("snp_info_d", aligner, "rare_allele_filter")
+		snp_info_d = pvp_utils.read_from_pickle_file(out, "snp_info_d", aligner, "rare_allele_filter")
 		print "Running uniqueness filter for %s." %(aligner)
-		snp_info_d = variant_filtering.uniqueness_filter(ref, out, snp_info_d, aligner, threads)
+		snp_info_d = variant_filtering.uniqueness_filter(ref, out, snp_info_d, aligner, threads, args.uniqueness_file)
 		print "%s uniqueness filter complete: %s SNPs failed filter, %s SNPs remain." % (aligner,(len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
-		pvp_utils.save_to_csv(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
-		pvp_utils.output_to_pickle_file(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
+		pvp_utils.save_to_csv(temp_directory, snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
+		pvp_utils.output_to_pickle_file(out, snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
 		os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))

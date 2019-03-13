@@ -3,6 +3,7 @@
 import os, sys, gzip, subprocess, shutil, csv, re, math, multiprocessing, vcf
 from collections import defaultdict
 from pvp_utils import *
+from Bio import SeqIO
 
 
 def create_empty_rows(snp_info_d, chrom, position, sample_name, ref_allele, snp_sample_info_d): # to create empty dictonaries for data entry from samples
@@ -45,7 +46,7 @@ def snp_data_entry(snp_info_d, chrom, position, sample_name, sample_info, alt_al
 	return snp_info_d, snp_sample_info_d
 
 
-def cumulative_snp_dictionary(reads_list, aligner): 
+def cumulative_snp_dictionary(out,reads_list, aligner): 
 	snp_info_d = {} #dictionary that contains all info on snps, 2 item tuple
 	snp_sample_info_d = {} #dictionary that contains all info on snps, 3 item tuple
 	snp_info_d["chromosome"] = {}
@@ -65,7 +66,6 @@ def cumulative_snp_dictionary(reads_list, aligner):
 	snp_sample_info_d["sample_name"] = {} 
 	snp_info_d["multiple_allele"] = {} # to record alt allele base across all vcf files and check for snps that have multiple mutations.
 	snp_info_d["fail_description"] = {} #to record why snps fail filter 
-	print "all dictionaries created successfully"
 	for reads in reads_list:
 		sample_name, null_output = get_sample_name(reads) 
 		print "importing variants for sample %s" % sample_name
@@ -86,6 +86,7 @@ def cumulative_snp_dictionary(reads_list, aligner):
 		for chrom, position in snp_info_d["pass"]:
 			if not (chrom, position, sample_name) in snp_sample_info_d["sample_allele"]:
 				snp_sample_info_d["sample_allele"][chrom,position,sample_name] = snp_info_d["ref_allele"][chrom,position]
+	print "all dictionaries created successfully"
 	print "Removing multi-allele snps"
 	snp_info_d = remove_multi_allele_snps(snp_info_d)
 	return snp_info_d, snp_sample_info_d
@@ -111,7 +112,7 @@ def remove_multi_allele_snps(snp_info_d): # To remove multiples allele and non-n
 	return snp_info_d
 
 
-def rare_allele_filter(snp_info_d): # To remove positions with alleles at extremely low freq that might have resulted from alignment errors
+def rare_allele_filter(): # To remove positions with alleles at extremely low freq that might have resulted from alignment errors
 	for chrom, position in snp_info_d["total_depth"].keys(): 
 		if snp_info_d["pass"][(chrom, position)] == False:
 			continue
@@ -179,7 +180,7 @@ def sort_pileup_filter_and_report(reference, total_depth_d, reads_list, aligner,
 		percentage_acceptable_genome = (float(sum(total_depth_d["acceptable_sample_depth"].values()))/len(total_depth_d["acceptable_sample_depth"]))*100
 		print "sample %s percentage of reference genome with coverage greater than 5 times: %.2f" %(sample_name,percentage_count)
 		print "percentage of reference genome acceptable for snp calling (not filtered by missingness_filter) = {:.2f}%".format(percentage_acceptable_genome)
-	output_to_pickle_file(total_depth_d, "total_depth_d", "acceptable_sample_depth", aligner)
+	output_to_pickle_file(out, total_depth_d, "total_depth_d", "acceptable_sample_depth", aligner)
 	return total_depth_d, snp_info_d
 
 def create_empty_outlier_coverage_d(total_depth_d): #to create and empty CDS dictionary
@@ -242,7 +243,7 @@ def calculate_filter_report_coverage_percentiles(total_depth_d, cds_d, snp_info_
 	print "number of snps greater than 85 percentile = {}, number of snps lower than 15 percentile = {}, number of snps not in CDS = {}".format(coverage_85_count, coverage_15_count, coverage_non_cds)
 	return snp_info_d, total_depth_d
 
-def missingness_filter(snp_info_d, reads_list, aligner, out): # missingness_filter to filter snps that have certain criteria missing. A compilation of different functions. Also includes coverage filtering
+def missingness_filter(ref, snp_info_d, reads_list, aligner, out): # missingness_filter to filter snps that have certain criteria missing. A compilation of different functions. Also includes coverage filtering
 	reference = SeqIO.to_dict(SeqIO.parse(ref, "gb"))
 	total_depth_d = create_empty_missingness_d(reference, reads_list)
 	total_depth_d, snp_info_d = sort_pileup_filter_and_report(reference, total_depth_d, reads_list, aligner, out, snp_info_d)
@@ -332,10 +333,10 @@ def generate_reference_uniqueness_file(argument):
 
 
 
-def uniqueness_filter(ref, out, snp_info_d, aligner, threads):
+def uniqueness_filter(ref, out, snp_info_d, aligner, threads, uniqueness):
 	reference = SeqIO.to_dict(SeqIO.parse(ref, "gb")) # create reference list from genbank reference
 	if not uniqueness:
-		uniqueness = os.path.join(out, "%s.uniqueness_score" %(aligner))
+		uniqueness = os.path.join(out, "%s.uniqueness_scores" %(aligner))
 	if not os.path.isfile(uniqueness):
 		out_handle = open(uniqueness, "w")
 		argument_list = []
@@ -386,47 +387,47 @@ def uniqueness_filter(ref, out, snp_info_d, aligner, threads):
 	return snp_info_d
 
 
-def filter_alignments(reads, aligners, threads):
-	for aligner in aligners:
-		filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "cumulative_snp_dictionary")
-		if not os.path.isfile(os.path.join(out, filename)):
-			print "filtering reads generated by %s" % aligner
-			print "generating cumulative SNP dictionary."
-			snp_info_d, snp_sample_info_d = cumulative_snp_dictionary(reads, aligner)
-			save_to_csv(snp_info_d, "snp_info_d", "cumulative_snp_dictionary", aligner)
-			output_to_pickle_file(snp_info_d, "snp_info_d", "cumulative_snp_dictionary", aligner)
-			save_to_csv(snp_sample_info_d, "snp_sample_info_d", "cumulative_snp_dictionary", aligner)
-			output_to_pickle_file(snp_sample_info_d, "snp_sample_info_d", "cumulative_snp_dictionary", aligner)
-			os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
-			filename = "{}.{}.{}.tsv".format("snp_sample_info_d", aligner, "cumulative_snp_dictionary")
-			os.rename(os.path.join(temp_directory,filename),os.path.join(out, filename))
-		filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "missingness_filter")
-		if not os.path.isfile(os.path.join(out, filename)):
+# def filter_alignments(reads, aligners, threads):
+	# for aligner in aligners:
+		# filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "cumulative_snp_dictionary")
+		# if not os.path.isfile(os.path.join(out, filename)):
+			# print "filtering reads generated by %s" % aligner
+			# print "generating cumulative SNP dictionary."
+			# snp_info_d, snp_sample_info_d = cumulative_snp_dictionary(out, reads, aligner)
+			# save_to_csv(snp_info_d, "snp_info_d", "cumulative_snp_dictionary", aligner)
+			# output_to_pickle_file(out, snp_info_d, "snp_info_d", "cumulative_snp_dictionary", aligner)
+			# save_to_csv(snp_sample_info_d, "snp_sample_info_d", "cumulative_snp_dictionary", aligner)
+			# output_to_pickle_file(out, snp_sample_info_d, "snp_sample_info_d", "cumulative_snp_dictionary", aligner)
+			# os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
+			# filename = "{}.{}.{}.tsv".format("snp_sample_info_d", aligner, "cumulative_snp_dictionary")
+			# os.rename(os.path.join(temp_directory,filename),os.path.join(out, filename))
+		# filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "missingness_filter")
+		# if not os.path.isfile(os.path.join(out, filename)):
 			# snp_info_d = open_csv("snp_info_d", aligner, "cumulative_snp_dictionary")
-			snp_info_d = read_from_pickle_file("snp_info_d", aligner, "cumulative_snp_dictionary")
-			print "Running missingness filter"
-			snp_info_d, total_depth_d = missingness_filter(snp_info_d, reads, aligner, out)
-			print "outlier coverage filter complete: %s SNPs failed filter, %s SNPs remain." % ((len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
-			save_to_csv(snp_info_d, "snp_info_d", "missingness_filter", aligner)
-			output_to_pickle_file(snp_info_d, "snp_info_d", "missingness_filter", aligner)
-			os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
-		filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "rare_allele_filter")
-		if not os.path.isfile(os.path.join(out, filename)):
+			# snp_info_d = read_from_pickle_file("snp_info_d", aligner, "cumulative_snp_dictionary")
+			# print "Running missingness filter"
+			# snp_info_d, total_depth_d = missingness_filter(snp_info_d, reads, aligner, out)
+			# print "outlier coverage filter complete: %s SNPs failed filter, %s SNPs remain." % ((len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
+			# save_to_csv(snp_info_d, "snp_info_d", "missingness_filter", aligner)
+			# output_to_pickle_file(snp_info_d, "snp_info_d", "missingness_filter", aligner)
+			# os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
+		# filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "rare_allele_filter")
+		# if not os.path.isfile(os.path.join(out, filename)):
 			# snp_info_d = open_csv("snp_info_d", aligner, "missingness_filter")
-			snp_info_d = read_from_pickle_file("snp_info_d", aligner, "missingness_filter")
-			print "Running rare allele filter"
-			snp_info_d = rare_allele_filter(snp_info_d)
-			print "Rare allele filter complete: %s SNPs failed filter, %s SNPs remian " % ((len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
-			save_to_csv(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
-			output_to_pickle_file(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
-			os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
-		filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "uniqueness_filter")
-		if not os.path.isfile(os.path.join(out, filename)):
+			# snp_info_d = read_from_pickle_file("snp_info_d", aligner, "missingness_filter")
+			# print "Running rare allele filter"
+			# snp_info_d = rare_allele_filter(snp_info_d)
+			# print "Rare allele filter complete: %s SNPs failed filter, %s SNPs remian " % ((len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
+			# save_to_csv(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
+			# output_to_pickle_file(snp_info_d, "snp_info_d", "rare_allele_filter", aligner)
+			# os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
+		# filename = "{}.{}.{}.tsv".format("snp_info_d", aligner, "uniqueness_filter")
+		# if not os.path.isfile(os.path.join(out, filename)):
 			# snp_info_d = open_csv("snp_info_d", aligner, "rare_allele_filter")
-			snp_info_d = read_from_pickle_file("snp_info_d", aligner, "rare_allele_filter")
-			print "Running uniqueness filter for %s." %(aligner)
-			snp_info_d = uniqueness_filter(ref, out, snp_info_d, aligner, threads)
-			print "%s uniqueness filter complete: %s SNPs failed filter, %s SNPs remain." % (aligner,(len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
-			save_to_csv(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
-			output_to_pickle_file(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
-			os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))
+			# snp_info_d = read_from_pickle_file("snp_info_d", aligner, "rare_allele_filter")
+			# print "Running uniqueness filter for %s." %(aligner)
+			# snp_info_d = uniqueness_filter(ref, out, snp_info_d, aligner, threads)
+			# print "%s uniqueness filter complete: %s SNPs failed filter, %s SNPs remain." % (aligner,(len(snp_info_d["pass"])-sum(snp_info_d["pass"].values())),sum(snp_info_d["pass"].values()))
+			# save_to_csv(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
+			# output_to_pickle_file(snp_info_d, "snp_info_d", "uniqueness_filter", aligner)
+			# os.rename(os.path.join(temp_directory,filename),os.path.join(out,filename))

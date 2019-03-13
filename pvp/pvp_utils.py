@@ -114,6 +114,7 @@ def import_reads(reads_list):
 
 def replace_dir(dir):
 	if os.path.exists(dir):
+		print "deleting {}".format(dir)
 		shutil.rmtree(dir)
 	os.mkdir(dir)
 
@@ -129,7 +130,7 @@ def make_output_directory(out, force):
 		sys.exit(1)
 
 
-def save_to_csv(dictionary, name, filter, aligner):
+def save_to_csv(temp_directory, dictionary, name, filter, aligner):
 	out_dict = defaultdict(dict)
 	file_name = "{}.{}.{}.tsv".format(name, aligner, filter)
 	path = os.path.join(temp_directory,file_name)
@@ -144,7 +145,7 @@ def save_to_csv(dictionary, name, filter, aligner):
 			writer.writerow(out_dict[row])
 
 			
-def output_to_pickle_file(dictionary, name, filter, aligner): # write python dict to a file
+def output_to_pickle_file(out, dictionary, name, filter, aligner): # write python dict to a file
 	# dictionary = defaultdict(dict)
 	file_name = "{}.{}.{}.pkl".format(name, aligner, filter)
 	path = os.path.join(out,file_name)
@@ -152,7 +153,7 @@ def output_to_pickle_file(dictionary, name, filter, aligner): # write python dic
 		pickle.dump(dictionary, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def read_from_pickle_file(name, aligner, filter):  # read python dict back from the file
+def read_from_pickle_file(out, name, aligner, filter):  # read python dict back from the file
 	# dictionary = defaultdict(dict)
 	file_name = "{}.{}.{}.pkl".format(name, aligner, filter)
 	path = os.path.join(out,file_name)
