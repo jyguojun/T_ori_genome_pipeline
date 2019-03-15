@@ -23,13 +23,17 @@ threads = args.threads
 host_ref = os.path.abspath(args.host_reference)
 if args.uniqueness_file:
 	uniqueness = args.uniqueness_file
+pvp_utils.make_output_directory(out, force)
+
 main_log = os.path.join(out, "pvp.log")
 now = datetime.datetime.now()
 with open(main_log, 'w') as log_handle:
 	log_handle.write(str(now) + '\n')
+
 pvp_utils.create_log_entry(main_log, "Staring pvp pipeline")
 
-pvp_utils.make_output_directory(out, force)
+# pvp_utils.make_output_directory(out, force)
+
 pvp_utils.create_log_entry(main_log, "deleting previous temp_directory")
 temp_directory = os.path.join(out,"temp_directory")
 pvp_utils.replace_dir(temp_directory)
