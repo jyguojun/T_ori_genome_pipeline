@@ -26,7 +26,7 @@ if args.uniqueness_file:
 main_log = os.path.join(out, "pvp.log")
 now = datetime.datetime.now()
 with open(main_log, 'w') as log_handle:
-	log_handle.write(now + '\n')
+	log_handle.write(str(now) + '\n')
 pvp_utils.create_log_entry(main_log, "Staring pvp pipeline")
 
 pvp_utils.make_output_directory(out, force)
